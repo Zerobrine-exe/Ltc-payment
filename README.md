@@ -37,6 +37,12 @@ Checks whether a payment matching the given criteria has arrived at the given LT
 | `amount` | number | Expected payment amount, in LTC (e.g. `0.05`) |
 | `beforetime` | number | Unix timestamp the payment must arrive before. Accepts seconds or milliseconds (values below `10000000000` are treated as seconds) |
 
+**Query parameters:**
+
+| Param | Type | Description |
+|---|---|---|
+| `lookbackSeconds` | number, optional | How far back (in seconds, relative to the moment of the request) a matching payment is allowed to have happened. Defaults to `3600` (1 hour). Prevents an old, unrelated transaction to the same address from being mistaken for the payment you're waiting on. Increase this if you expect a longer gap between generating the payment request and the first check. |
+
 **Example request:**
 
 ```bash
@@ -109,6 +115,7 @@ All responses are JSON with a `status` field. HTTP status is `200` for all recog
 
 - **Amount tolerance:** a received payment counts as a match if it's within **5%** of the expected amount (minimum tolerance of 1000 litoshis), to account for network fee rounding. This is an "almost equal" match, not an exact-value match.
 - **Confirmation threshold:** a payment is `confirmed` once it has **at least 1 confirmation** on-chain. Before that, it's reported as `pending`.
+- **Recency window:** a matching transaction must have happened within the last `lookbackSeconds` (default 1 hour, relative to the request time) **and** before `beforetime`. This stops an old, unrelated transaction to the same address (e.g. from a previous unrelated payment) from being mistaken for the one you're waiting on.
 
 ## Recommended polling pattern
 

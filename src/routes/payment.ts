@@ -5,6 +5,7 @@ const router: IRouter = Router();
 const LITOSHI_PER_LTC = 100_000_000;
 const CONFIRMATIONS_REQUIRED = 1;
 const AMOUNT_TOLERANCE_RATIO = 0.05;
+const DEFAULT_LOOKBACK_MS =  1000; // how far back a matching payment is allowed to have happened, relative to the request time
 
 interface BlockCypherTxRef {
   tx_hash: string;
@@ -52,6 +53,15 @@ router.get("/private/:address/:amount/:beforetime", async (req: Request, res: Re
 
   const deadlineMs = deadline < 10_000_000_000 ? deadline * 1000 : deadline;
 
+  const rawLookback = req.query.lookbackSeconds;
+  const lookbackSeconds = Number(Array.isArray(rawLookback) ? rawLookback[0] : rawLookback);
+  const lookbackMs = Number.isFinite(lookbackSeconds) && lookbackSeconds > 0
+    ? lookbackSeconds * 1000
+    : DEFAULT_LOOKBACK_MS;
+
+  const requestTimeMs = Date.now();
+  const windowStartMs = requestTimeMs - lookbackMs;
+
   try {
     const response = await fetch(
       `https://api.blockcypher.com/v1/ltc/main/addrs/${encodeURIComponent(address)}?limit=50`,
@@ -72,9 +82,10 @@ router.get("/private/:address/:amount/:beforetime", async (req: Request, res: Re
     const matches = allTxs.filter((tx) => {
       const withinAmount = Math.abs(tx.value - targetLitoshis) <= toleranceLitoshis;
       const txTimeStr = tx.confirmed ?? tx.received;
-      const txTimeMs = txTimeStr ? new Date(txTimeStr).getTime() : Date.now();
+      const txTimeMs = txTimeStr ? new Date(txTimeStr).getTime() : requestTimeMs;
       const withinDeadline = txTimeMs <= deadlineMs;
-      return withinAmount && withinDeadline;
+      const withinLookbackWindow = txTimeMs >= windowStartMs;
+      return withinAmount && withinDeadline && withinLookbackWindow;
     });
 
     const confirmedMatch = matches
@@ -108,7 +119,7 @@ router.get("/private/:address/:amount/:beforetime", async (req: Request, res: Re
       return;
     }
 
-    const expired = Date.now() > deadlineMs;
+    const expired = requestTimeMs > deadlineMs;
     res.json({
       status: expired ? "expired" : "waiting",
       message: expired
@@ -117,6 +128,7 @@ router.get("/private/:address/:amount/:beforetime", async (req: Request, res: Re
       address,
       expectedAmountLtc: targetAmount,
       beforeTime: new Date(deadlineMs).toISOString(),
+      lookbackWindowStart: new Date(windowStartMs).toISOString(),
     });
   } catch (error) {
     req.log.error({ error, address }, "Error checking LTC payment");

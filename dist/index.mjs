@@ -32503,6 +32503,7 @@ var router2 = (0, import_express2.Router)();
 var LITOSHI_PER_LTC = 1e8;
 var CONFIRMATIONS_REQUIRED = 1;
 var AMOUNT_TOLERANCE_RATIO = 0.05;
+var DEFAULT_LOOKBACK_MS = 60 * 60 * 1e3;
 function isApiKeyValid(req) {
   const provided = req.header("x-api-key") ?? req.query.key;
   const expected = process.env.LTC_PAYMENT_API_SECRET;
@@ -32530,6 +32531,11 @@ router2.get("/private/:address/:amount/:beforetime", async (req, res) => {
     return;
   }
   const deadlineMs = deadline < 1e10 ? deadline * 1e3 : deadline;
+  const rawLookback = req.query.lookbackSeconds;
+  const lookbackSeconds = Number(Array.isArray(rawLookback) ? rawLookback[0] : rawLookback);
+  const lookbackMs = Number.isFinite(lookbackSeconds) && lookbackSeconds > 0 ? lookbackSeconds * 1e3 : DEFAULT_LOOKBACK_MS;
+  const requestTimeMs = Date.now();
+  const windowStartMs = requestTimeMs - lookbackMs;
   try {
     const response = await fetch(
       `https://api.blockcypher.com/v1/ltc/main/addrs/${encodeURIComponent(address)}?limit=50`
@@ -32546,9 +32552,10 @@ router2.get("/private/:address/:amount/:beforetime", async (req, res) => {
     const matches = allTxs.filter((tx) => {
       const withinAmount = Math.abs(tx.value - targetLitoshis) <= toleranceLitoshis;
       const txTimeStr = tx.confirmed ?? tx.received;
-      const txTimeMs = txTimeStr ? new Date(txTimeStr).getTime() : Date.now();
+      const txTimeMs = txTimeStr ? new Date(txTimeStr).getTime() : requestTimeMs;
       const withinDeadline = txTimeMs <= deadlineMs;
-      return withinAmount && withinDeadline;
+      const withinLookbackWindow = txTimeMs >= windowStartMs;
+      return withinAmount && withinDeadline && withinLookbackWindow;
     });
     const confirmedMatch = matches.filter((tx) => tx.confirmations >= CONFIRMATIONS_REQUIRED).sort((a, b) => b.confirmations - a.confirmations)[0];
     if (confirmedMatch) {
@@ -32576,13 +32583,14 @@ router2.get("/private/:address/:amount/:beforetime", async (req, res) => {
       });
       return;
     }
-    const expired = Date.now() > deadlineMs;
+    const expired = requestTimeMs > deadlineMs;
     res.json({
       status: expired ? "expired" : "waiting",
       message: expired ? "No matching payment received before the deadline" : "No matching payment received yet \u2014 keep polling",
       address,
       expectedAmountLtc: targetAmount,
-      beforeTime: new Date(deadlineMs).toISOString()
+      beforeTime: new Date(deadlineMs).toISOString(),
+      lookbackWindowStart: new Date(windowStartMs).toISOString()
     });
   } catch (error) {
     req.log.error({ error, address }, "Error checking LTC payment");
