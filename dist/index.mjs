@@ -32486,13 +32486,11 @@ var nullableType = ZodNullable.create;
 var preprocessType = ZodEffects.createWithPreprocess;
 var pipelineType = ZodPipeline.create;
 
-// ../../lib/api-zod/src/generated/api.ts
+// src/routes/health.ts
+var router = (0, import_express.Router)();
 var HealthCheckResponse = objectType({
   status: stringType()
 });
-
-// src/routes/health.ts
-var router = (0, import_express.Router)();
 router.get("/healthz", (_req, res) => {
   const data = HealthCheckResponse.parse({ status: "ok" });
   res.json(data);
@@ -32515,7 +32513,9 @@ router2.get("/private/:address/:amount/:beforetime", async (req, res) => {
     res.status(401).json({ status: "error", message: "Invalid or missing API key" });
     return;
   }
-  const { address, amount, beforetime } = req.params;
+  const address = String(req.params.address ?? "");
+  const amount = String(req.params.amount ?? "");
+  const beforetime = String(req.params.beforetime ?? "");
   const targetAmount = Number(amount);
   const deadline = Number(beforetime);
   if (!address || Number.isNaN(targetAmount) || targetAmount <= 0) {

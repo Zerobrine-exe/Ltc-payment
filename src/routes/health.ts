@@ -1,7 +1,11 @@
 import { Router, type IRouter } from "express";
-import { HealthCheckResponse } from "@workspace/api-zod";
+import * as zod from "zod";
 
 const router: IRouter = Router();
+
+const HealthCheckResponse = zod.object({
+  status: zod.string(),
+});
 
 router.get("/healthz", (_req, res) => {
   const data = HealthCheckResponse.parse({ status: "ok" });

@@ -32,7 +32,9 @@ router.get("/private/:address/:amount/:beforetime", async (req: Request, res: Re
     return;
   }
 
-  const { address, amount, beforetime } = req.params;
+  const address = String(req.params.address ?? "");
+  const amount = String(req.params.amount ?? "");
+  const beforetime = String(req.params.beforetime ?? "");
   const targetAmount = Number(amount);
   const deadline = Number(beforetime);
 
